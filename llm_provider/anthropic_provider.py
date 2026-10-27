@@ -1,6 +1,6 @@
 import inspect
 import json
-from typing import Any
+from typing import Any, cast
 
 from anthropic import AsyncAnthropic
 
@@ -16,28 +16,46 @@ class AnthropicProvider(BaseModel):
         max_token_count: int,
         system_prompt: str | None,
         tools: list[dict[str, Any]] | None = None,
+        *,
+        max_tool_rounds: int = 10,
     ):
         self.llm = AsyncAnthropic(api_key=api_key)
         self.model_id = model_id
         self.max_token_count = max_token_count
         self.system_prompt = system_prompt
         self.tools = tools
+        self.max_tool_rounds = max_tool_rounds
         self.messages: list[dict[str, Any]] = []
         self.input_token_count = 0
         self.output_token_count = 0
 
-    async def invoke(self, message: str) -> str:
-        self.messages.append({"role": "user", "content": message})
-        response_text = []
+    def reset(self) -> None:
+        self.messages = []
+        self.input_token_count = 0
+        self.output_token_count = 0
 
-        ## start the loop to interpret tool calls
+    async def invoke(self, message: str, *, reset: bool = False) -> str:
+        if reset:
+            self.reset()
+
+        self.messages.append({"role": "user", "content": message})
+        response_text: list[str] = []
+        tool_rounds = 0
+
         while True:
+            if tool_rounds >= self.max_tool_rounds:
+                raise RuntimeError(
+                    f"Exceeded max tool-call rounds ({self.max_tool_rounds}). "
+                    "Consider reducing tool chaining or increasing max_tool_rounds."
+                )
+            tool_rounds += 1
+
             response = await self.llm.messages.create(
                 max_tokens=self.max_token_count,
                 messages=self.messages,
                 model=self.model_id,
                 **({"system": self.system_prompt} if self.system_prompt else {}),
-                **({"tools": self.tools} if self.tools is not None else {}),
+                **({"tools": self.tools} if self.tools else {}),
             )
 
             self.input_token_count += response.usage.input_tokens
@@ -58,28 +76,10 @@ class AnthropicProvider(BaseModel):
                 if block.type == "text":
                     response_text.append(block.text)
                 elif block.type == "tool_use":
-                    try:
-                        tool = TOOL_REGISTRY.get(block.name)
-                        if tool is None:
-                            raise RuntimeError(
-                                f"No implementation is registered for tool {block.name!r}"
-                            )
-
-                        result = tool(**block.input)
-                        if inspect.isawaitable(result):
-                            result = await result
-
-                        result_content = (
-                            result
-                            if isinstance(result, str)
-                            else json.dumps(result, default=str)
-                        )
-                        is_error = False
-                    except Exception as error:  # noqa: BLE001
-                        result_content = f"{type(error).__name__}: {error}"
-                        is_error = True
-
-                    ## append the tool result. It will be sent to the llm in the next call.
+                    result_content, is_error = await self._invoke_tool(
+                        block.name,
+                        cast(dict[str, Any], block.input),
+                    )
                     tool_result = {
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -96,3 +96,33 @@ class AnthropicProvider(BaseModel):
 
     def token_count(self) -> tuple[int, int]:
         return (self.input_token_count, self.output_token_count)
+
+    async def _invoke_tool(self, tool_name: str, tool_args: dict[str, Any]) -> tuple[str, bool]:
+        try:
+            tool = TOOL_REGISTRY.get(tool_name)
+            if tool is None:
+                raise RuntimeError(f"No implementation is registered for tool {tool_name!r}")
+
+            result = tool(**tool_args)
+            if inspect.isawaitable(result):
+                result = await result
+
+            if hasattr(result, "model_dump"):
+                payload = result.model_dump(mode="json")
+            elif hasattr(result, "dict"):
+                payload = result.dict()
+            elif isinstance(result, (dict, list, tuple, set)):
+                payload = result
+            else:
+                payload = result
+
+            result_content = (
+                result if isinstance(result, str)
+                else json.dumps(payload, default=str, ensure_ascii=False)
+            )
+            is_error = False
+        except Exception as error:  # noqa: BLE001
+            result_content = f"{type(error).__name__}: {error}"
+            is_error = True
+
+        return (result_content, is_error)

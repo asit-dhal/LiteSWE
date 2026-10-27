@@ -18,9 +18,15 @@ class Message(BaseModel):
 
 class BaseModel(ABC):
     @abstractmethod
-    async def invoke(self, message: str) -> str:
+    async def invoke(self, message: str, *, reset: bool = False) -> str:
         pass
 
     @abstractmethod
     def token_count(self) -> tuple[int, int]:
         pass
+
+    def reset(self) -> None:
+        """Clear conversation state and counters."""
+        self.messages = []
+        self.input_token_count = 0
+        self.output_token_count = 0

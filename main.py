@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import datetime
 import os
 import time
@@ -10,62 +10,35 @@ from llm_provider.toolcall_utility import tool
 
 load_dotenv()
 
+
 @tool
 async def get_local_timezone() -> str:
-    """Return the local timezone"""
-    return time.tzname
+    """Get the current local timezone name."""
+    tz_name = time.tzname
+    if isinstance(tz_name, (list, tuple)):
+        return tz_name[0] if tz_name else "UTC"
+    return tz_name or "UTC"
 
 
 @tool
 async def get_current_datetime(format: str = "%d.%m.%y %H:%M:%S") -> str:
-    """Return the current datetime in the fomat specified.
-    The format can be any of the following.
-    Directive	Meaning	                     Example
-    %a	        Abbreviated weekday name.	 Sun, Mon, ...
-    %A	        Full weekday name.	         Sunday, Monday, ...
-    %w	        Weekday as a decimal number. 0, 1, ..., 6
-    %d	        Day of the month as a zero-padded decimal.	 01, 02, ..., 31
-    %-d	        Day of the month as a decimal number.	1, 2, ..., 30
-    %b	        Abbreviated month name.	     Jan, Feb, ..., Dec
-    %B	        Full month name.	         January, February, ...
-    %m	        Month as a zero-padded decimal number.	01, 02, ..., 12
-    %-m	        Month as a decimal number.	 1, 2, ..., 12
-    %y	        Year without century as a zero-padded decimal number.	00, 01, ..., 99
-    %-y	        Year without century as a decimal number.	0, 1, ..., 99
-    %Y	        Year with century as a decimal number.	2013, 2019 etc.
-    %H	        Hour (24-hour clock) as a zero-padded decimal number.	00, 01, ..., 23
-    %-H	        Hour (24-hour clock) as a decimal number.	0, 1, ..., 23
-    %I	        Hour (12-hour clock) as a zero-padded decimal number.	01, 02, ..., 12
-    %-I	        Hour (12-hour clock) as a decimal number.	1, 2, ... 12
-    %p	        Locale’s AM or PM.	AM, PM
-    %M	        Minute as a zero-padded decimal number.	00, 01, ..., 59
-    %-M  	    Minute as a decimal number.	0, 1, ..., 59
-    %S	        Second as a zero-padded decimal number.	00, 01, ..., 59
-    %-S	        Second as a decimal number.	0, 1, ..., 59
-    %f	        Microsecond as a decimal number, zero-padded on the left.	000000 - 999999
-    %z	        UTC offset in the form +HHMM or -HHMM.
-    %Z	        Time zone name.
-    %j	        Day of the year as a zero-padded decimal number.	001, 002, ..., 366
-    %-j	        Day of the year as a decimal number.	1, 2, ..., 366
-    %U	        Week number of the year (Sunday as the first day of the week). All days in a new year preceding the first Sunday are considered to be in week 0.	00, 01, ..., 53
-    %W	        Week number of the year (Monday as the first day of the week). All days in a new year preceding the first Monday are considered to be in week 0.	00, 01, ..., 53
-    %c	        Locale’s appropriate date and time representation.	Mon Sep 30 07:06:05 2013
-    %x	        Locale’s appropriate date representation.	09/30/13
-    %X	        Locale’s appropriate time representation.	07:06:05
-    %%	        A literal '%' character.	%
-    """
+    """Return the current local datetime formatted using a Python strftime pattern."""
     return datetime.datetime.now().strftime(format)
 
 
 async def main():
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set.")
+
     provider = AnthropicProvider(
-        api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        api_key=api_key,
         model_id="claude-opus-5-5",
         max_token_count=1024,
         system_prompt="You are a helpful assistant. You always give straight forward answer and no additional text.",
         tools=[get_current_datetime.schema, get_local_timezone.schema],
     )
-    print(await provider.invoke("What is the time and date now?"))
+    print(await provider.invoke("What is the time and date now?", reset=True))
     print(f"Total token spent: {provider.token_count()[0] + provider.token_count()[1]}")
 
 
