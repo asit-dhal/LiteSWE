@@ -1,8 +1,10 @@
-from dotenv import load_dotenv
-import os
 import asyncio
 import datetime
+import os
 import time
+
+from dotenv import load_dotenv
+
 from llm_provider import AnthropicProvider
 from llm_provider.toolcall_utility import tool
 
@@ -12,6 +14,7 @@ load_dotenv()
 async def get_local_timezone() -> str:
     """Return the local timezone"""
     return time.tzname
+
 
 @tool
 async def get_current_datetime(format: str = "%d.%m.%y %H:%M:%S") -> str:
@@ -60,9 +63,11 @@ async def main():
         model_id="claude-opus-5-5",
         max_token_count=1024,
         system_prompt="You are a helpful assistant. You always give straight forward answer and no additional text.",
-        tools=[get_current_datetime.schema, get_local_timezone.schema])
+        tools=[get_current_datetime.schema, get_local_timezone.schema],
+    )
     print(await provider.invoke("What is the time and date now?"))
-    print(f"Total token spent: { provider.token_count()[0] + provider.token_count()[1]}")
+    print(f"Total token spent: {provider.token_count()[0] + provider.token_count()[1]}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

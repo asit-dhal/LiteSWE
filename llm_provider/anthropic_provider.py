@@ -2,9 +2,11 @@ import inspect
 import json
 from typing import Any
 
+from anthropic import AsyncAnthropic
+
 from .base_provider import BaseModel
 from .toolcall_utility import TOOL_REGISTRY
-from anthropic import AsyncAnthropic
+
 
 class AnthropicProvider(BaseModel):
     def __init__(
@@ -41,13 +43,15 @@ class AnthropicProvider(BaseModel):
             self.input_token_count += response.usage.input_tokens
             self.output_token_count += response.usage.output_tokens
 
-            self.messages.append({
-                "role": "assistant",
-                "content": [
-                    block.model_dump(exclude_none=True)
-                    for block in response.content
-                ],
-            })
+            self.messages.append(
+                {
+                    "role": "assistant",
+                    "content": [
+                        block.model_dump(exclude_none=True)
+                        for block in response.content
+                    ],
+                }
+            )
 
             tool_results = []
             for block in response.content:
@@ -71,7 +75,7 @@ class AnthropicProvider(BaseModel):
                             else json.dumps(result, default=str)
                         )
                         is_error = False
-                    except Exception as error:
+                    except Exception as error:  # noqa: BLE001
                         result_content = f"{type(error).__name__}: {error}"
                         is_error = True
 

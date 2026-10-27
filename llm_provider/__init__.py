@@ -1,1 +1,1 @@
-from .anthropic_provider import AnthropicProvider
+from .anthropic_provider import AnthropicProvider as AnthropicProvider
